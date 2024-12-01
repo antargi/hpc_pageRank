@@ -1,0 +1,4 @@
+#define restrict __restrict__
+extern "C" {
+    #include "bsp.h" 
+}

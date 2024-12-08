@@ -87,11 +87,7 @@ void cargarDatos(const std::string& filename, double relevanciaInicial,
 
 void enviarNodos(int num_procs,
                  const std::vector<Node>& nodos,
-                 std::vector<Node>& localNodos,
-                 int tagNodos) {
-
-    int tagSize = sizeof(int);
-    bsp_set_tagsize(&tagSize); 
+                 std::vector<Node>& localNodos) {
     
     int pid = bsp_pid();
 
@@ -106,6 +102,7 @@ void enviarNodos(int num_procs,
                               << ", Relevancia Actual = " << nodo.relevanciaActual
                               << ", Relevancia Prev = " << nodo.relevanciaPrev << std::endl;
                 } else {
+                    int tagNodos = 0; 
                     bsp_send(dest, &tagNodos, &nodo, sizeof(Node));
                     std::cout << "Nodo enviado al proceso " << dest << ": ID = " << nodo.id
                               << ", Relevancia Actual = " << nodo.relevanciaActual
@@ -119,27 +116,23 @@ void enviarNodos(int num_procs,
 
 
 void enviarConexiones(int num_procs,
-                 const std::vector<Connection>& conexiones,
-                 std::vector<Connection>& localConexiones,
-                 int tagConexiones) {
+                      const std::vector<Connection>& conexiones,
+                      std::vector<Connection>& localConexiones) {
 
-    int tagSize = sizeof(int);
-    bsp_set_tagsize(&tagSize); 
-    
     int pid = bsp_pid();
 
     for (int dest = 0; dest < num_procs; ++dest) {
-        // std::cout << "Proceso " << pid << " preparando conexiones para el proceso " << dest << std::endl;
-
         for (const auto& conexion : conexiones) {
-            if (conexion.destination % num_procs == dest) {
-                if (dest == 0) {
+            // Seleccionar conexiones según el ORIGEN
+            if (conexion.origin % num_procs == dest) {
+                if (dest == pid) {
                     localConexiones.push_back(conexion);
                     std::cout << "Conexión almacenada localmente: ID = " << conexion.id
                               << ", Origen = " << conexion.origin
                               << ", Destino = " << conexion.destination
                               << ", Peso = " << conexion.weight << std::endl;
-                } else {
+                } else  {
+                    int tagConexiones = 0; 
                     bsp_send(dest, &tagConexiones, &conexion, sizeof(Connection));
                     std::cout << "Conexión enviada al proceso " << dest << ": ID = " << conexion.id
                               << ", Origen = " << conexion.origin
@@ -149,23 +142,23 @@ void enviarConexiones(int num_procs,
             }
         }
     }
-   
 }
 
 
-void recibirNodos(std::vector<Node>& localNodos, int tagNodos) {
+void recibirNodos(std::vector<Node>& localNodos) {
 
     int numMensajes, totalTamaño, currentTag;
+    int status;
     bsp_qsize(&numMensajes, &totalTamaño);
 
     std::cout << "Proceso " << bsp_pid() << " recibirá " << numMensajes << " mensajes de nodos." << std::endl;
 
     for (int i = 0; i < numMensajes; ++i) {
 
-        bsp_get_tag(&currentTag, nullptr);
+        bsp_get_tag(&status, &currentTag);
 
         Node nodo;
-        bsp_move(&nodo, sizeof(Node));
+        bsp_move(&nodo, status);
         localNodos.push_back(nodo);
         std::cout << "Proceso " << bsp_pid() << " recibió Nodo: ID = " << nodo.id
                     << ", Relevancia Actual = " << nodo.relevanciaActual
@@ -175,17 +168,18 @@ void recibirNodos(std::vector<Node>& localNodos, int tagNodos) {
 
 
 
-void recibirConexiones(std::vector<Connection>& localConexiones, int tagConexiones) {
+void recibirConexiones(std::vector<Connection>& localConexiones) {
 
     int numMensajes, totalTamaño, currentTag;
+    int status;    
     bsp_qsize(&numMensajes, &totalTamaño);
 
-    // std::cout << "Proceso " << bsp_pid() << " recibirá " << numMensajes << " mensajes de conexiones." << std::endl;
+    std::cout << "Proceso " << bsp_pid() << " recibirá " << numMensajes << " mensajes de conexiones." << std::endl;
 
     for (int i = 0; i < numMensajes; ++i) {
-        bsp_get_tag(&currentTag, nullptr);
+        bsp_get_tag(&status, &currentTag);
         Connection conexion;
-        bsp_move(&conexion, sizeof(Connection));
+        bsp_move(&conexion, status);
         localConexiones.push_back(conexion);
         std::cout << "Proceso " << bsp_pid() << " recibió Conexión: ID = " << conexion.id
                     << ", Origen = " << conexion.origin
@@ -296,6 +290,9 @@ void bsp_main() {
     int pid = bsp_pid();          
     int num_procs = bsp_nprocs(); 
 
+    int tagSize = sizeof(int);
+    bsp_set_tagsize(&tagSize);
+
     std::cout << "El valor del pid es: " << pid << std::endl;
 
     std::string filename = g_argc > 1 ? g_argv[1] : "conexiones.txt";
@@ -307,27 +304,41 @@ void bsp_main() {
     std::vector<Node> localNodos;
     std::vector<Connection> localConexiones;
     
-    int tagNodos = 10;
-    int tagConexiones = 20;
-
     if (pid == 0) {
         cargarDatos(filename, relevanciaInicial, nodos, conexiones);
-        enviarNodos(num_procs, nodos, localNodos, tagNodos);
-    }         
-    
+        enviarNodos(num_procs, nodos, localNodos);
+    } 
+
+    std::cout << "Pid: " << pid << " esperando envío de nodos..." << std::endl;
     bsp_sync();
-    recibirNodos(localNodos, tagNodos);
+    
+    if (pid != 0) {
+        std::cout << "Pid: " << pid << " entrando al recibimiento de nodos" << std::endl;
+        recibirNodos(localNodos);
+    }        
 
 
     if (pid == 0) {        
-        enviarConexiones(num_procs, conexiones, localConexiones, tagConexiones);
+        enviarConexiones(num_procs, conexiones, localConexiones);
     } 
 
+    std::cout << "Pid: " << pid << " esperando envío de conexiones..." << std::endl;
     bsp_sync();
-    recibirConexiones(localConexiones, tagConexiones);
+
+    if( pid != 0 ){
+        recibirConexiones(localConexiones);        
+    }
+
+
+    bsp_end();
+
+    return;
+
+    // bsp_sync();
+    // recibirConexiones(localConexiones, tagConexiones);
    
 
-    bsp_sync();
+    // bsp_sync();
 
     constexpr double epsilon = 1e-6;
     bool convergencia = false;
@@ -359,6 +370,8 @@ void bsp_main() {
     }
 
     bsp_end();
+
+    return;
 
     // while (!convergencia) {
     //     iteracion++;

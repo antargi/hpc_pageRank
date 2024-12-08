@@ -217,53 +217,6 @@ void bsp_main() {
         recibirConexiones(localConexiones);        
     }
 
-
-    bsp_end();
-
-    return;
-
-    // bsp_sync();
-    // recibirConexiones(localConexiones, tagConexiones);
-   
-
-    // bsp_sync();
-
-    constexpr double epsilon = 1e-6;
-    bool convergencia = false;
-    int iteracion = 0;
-
-    while (!convergencia) {
-        iteracion++;
-
-        std::vector<int> nodosRequeridos;
-        solicitarNodosExternos(localConexiones, nodosRequeridos);
-
-        enviarRelevancias(localNodos, nodosRequeridos);
-        bsp_sync();
-        auto relevanciasExternas = recibirRelevancias();
-
-        actualizarRelevancias(localNodos, localConexiones, relevanciasExternas);
-
-        convergencia = verificarConvergencia(localNodos, epsilon, num_procs);
-
-        if (pid == 0) {
-            std::cout << "Iteración " << iteracion << " - Convergencia: " << (convergencia ? "Sí" : "No") << std::endl;
-        }
-
-        bsp_sync();
-    }
-
-    if (pid == 0) {
-        std::cout << "Convergencia alcanzada tras " << iteracion << " iteraciones." << std::endl;
-    }
-
-    //  while (!convergencia) {
-    //      iteracion++;
-
-    //      std::vector<int> nodosRequeridos;
-
-    // }
-
     bsp_end();
 
     return;

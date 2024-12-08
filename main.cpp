@@ -6,7 +6,7 @@
 #include <cmath>
 #include "Node.h"
 #include "Connection.h"
-#include <unordered_map>
+#include <algorithm>
 
 #define restrict __restrict__
 extern "C" {
@@ -169,6 +169,72 @@ void recibirConexiones(std::vector<Connection>& localConexiones) {
 }
 
 
+void calcularRelevanciaActual(std::vector<Node>& localNodos,
+                              const std::vector<Connection>& localConexiones) {
+    std::cout << "===== Iniciando cálculo de relevancia actual =====" << std::endl;
+
+    // Reiniciar la relevancia actual de todos los nodos locales
+    for (auto& nodo : localNodos) {
+        std::cout << "Nodo " << nodo.id << " | Relevancia previa: " << nodo.relevanciaPrev 
+                  << " -> Reiniciando relevancia actual." << std::endl;
+        nodo.relevanciaPrev = nodo.relevanciaActual; // Guardar relevancia previa
+        nodo.relevanciaActual = 0.0;                // Resetear relevancia actual
+    }
+
+    // Calcular contribuciones locales
+    for (const auto& conexion : localConexiones) {
+        std::cout << "Procesando conexión: Origen = " << conexion.origin 
+                  << ", Destino = " << conexion.destination 
+                  << ", Peso = " << conexion.weight << std::endl;
+
+        // Encontrar el nodo origen
+        auto itOrigen = std::find_if(localNodos.begin(), localNodos.end(),
+                                     [&conexion](const Node& nodo) {
+                                         return nodo.id == conexion.origin;
+                                     });
+
+        if (itOrigen != localNodos.end()) {
+            double relevanciaOrigen = itOrigen->relevanciaPrev;
+            std::cout << "Nodo origen encontrado: ID = " << itOrigen->id 
+                      << ", Relevancia previa: " << relevanciaOrigen << std::endl;
+
+            // Calcular grado saliente
+            int gradoSaliente = std::count_if(localConexiones.begin(), localConexiones.end(),
+                                              [&conexion](const Connection& c) {
+                                                  return c.origin == conexion.origin;
+                                              });
+            std::cout << "Grado saliente del nodo " << conexion.origin 
+                      << ": " << gradoSaliente << std::endl;
+
+            if (gradoSaliente > 0) {
+                double contribucion = relevanciaOrigen / gradoSaliente;
+                std::cout << "Contribución calculada desde nodo " << conexion.origin 
+                          << " hacia nodo " << conexion.destination 
+                          << ": " << contribucion << std::endl;
+
+                // Encontrar el nodo destino
+                auto itDestino = std::find_if(localNodos.begin(), localNodos.end(),
+                                              [&conexion](const Node& nodo) {
+                                                  return nodo.id == conexion.destination;
+                                              });
+
+                if (itDestino != localNodos.end()) {
+                    itDestino->relevanciaActual += contribucion * conexion.weight;
+                    std::cout << "Nodo destino actualizado: ID = " << itDestino->id 
+                              << ", Nueva relevancia actual: " << itDestino->relevanciaActual << std::endl;
+                } else {
+                    std::cout << "Advertencia: Nodo destino no encontrado para ID = " 
+                              << conexion.destination << std::endl;
+                }
+            }
+        } else {
+            std::cout << "Advertencia: Nodo origen no encontrado para ID = " 
+                      << conexion.origin << std::endl;
+        }
+    }
+
+    std::cout << "===== Fin del cálculo de relevancia actual =====" << std::endl;
+}
 
 
 void bsp_main() {
@@ -214,7 +280,35 @@ void bsp_main() {
     bsp_sync();
 
     if( pid != 0 ){
-        recibirConexiones(localConexiones);        
+        recibirConexiones(localConexiones);  
+    }
+
+    bsp_sync();      
+
+
+    constexpr double epsilon = 1e-6;  // Umbral para la convergencia
+    constexpr double dampingFactor = 0.85;  // Factor de amortiguamiento
+    bool convergencia = false;
+    int iteracion = 0;
+
+    while (!convergencia) {
+        iteracion++;
+
+        // Paso 1: Calcular relevancias parciales locales
+        calcularRelevanciaActual(localNodos, localConexiones);
+
+        bsp_sync();  
+        
+        // Debug: Imprimir relevancias locales calculadas
+        std::cout << "Iteración " << iteracion << " - Relevancias parciales locales:" << std::endl;
+        for (const auto& nodo : localNodos) {
+            std::cout << "Nodo " << nodo.id
+                    << " | Relevancia Parcial: " << nodo.relevanciaActual
+                    << " | Relevancia Previa: " << nodo.relevanciaPrev << std::endl;
+        }
+
+        // Detener el ciclo después de la primera iteración
+        break;
     }
 
     bsp_end();

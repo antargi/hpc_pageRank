@@ -31,26 +31,6 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-void distribuirDatos(const std::vector<Node>& nodos,
-                     const std::vector<Connection>& conexiones,
-                     int num_procs, int pid,
-                     std::vector<Node>& localNodos,
-                     std::vector<Connection>& localConexiones) {
-    // distribuir nodos
-    for (const auto& nodo : nodos) {
-        if (nodo.id % num_procs == pid) {
-            localNodos.push_back(nodo);
-        }
-    }
-
-    // distribuir conn
-    for (const auto& conexion : conexiones) {
-        if (conexion.destination % num_procs == pid) {
-            localConexiones.push_back(conexion);
-        }
-    }
-}
-
 void cargarDatos(const std::string& filename, double relevanciaInicial, 
     
     std::vector<Node>& nodos, std::vector<Connection>& conexiones) {
@@ -191,98 +171,6 @@ void recibirConexiones(std::vector<Connection>& localConexiones) {
 
 
 
-
-
-
-bool verificarConvergencia(const std::vector<Node>& localNodos, double epsilon, int num_procs) {
-    bool localConvergencia = true;
-
-    for (const auto& nodo : localNodos) {
-        if (std::abs(nodo.relevanciaActual - nodo.relevanciaPrev) >= epsilon) {
-            localConvergencia = false;
-            break;
-        }
-    }
-
-    bsp_push_reg(&localConvergencia, sizeof(bool));
-    bsp_sync();
-
-    bool globalConvergencia = localConvergencia;
-    for (int i = 0; i < num_procs; ++i) {
-        bool procesoConvergencia;
-        bsp_get(i, &localConvergencia, 0, &procesoConvergencia, sizeof(bool));
-        globalConvergencia = globalConvergencia && procesoConvergencia;
-    }
-
-    return globalConvergencia;
-}
-
-
-void enviarRelevancias(const std::vector<Node>& localNodos, const std::vector<int>& nodosRequeridos) {
-    for (int destino = 0; destino < bsp_nprocs(); ++destino) {
-        if (destino != bsp_pid()) {
-            for (int nodoId : nodosRequeridos) {
-                for (const auto& nodo : localNodos) {
-                    if (nodo.id == nodoId) {
-                        bsp_send(destino, nullptr, &nodo, sizeof(Node));
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-
-void solicitarNodosExternos(const std::vector<Connection>& localConexiones, std::vector<int>& nodosRequeridos) {
-    for (const auto& conexion : localConexiones) {
-        if (conexion.origin % bsp_nprocs() != bsp_pid()) {
-            nodosRequeridos.push_back(conexion.origin);
-        }
-    }
-}
-
-
-void actualizarRelevancias(std::vector<Node>& localNodos, const std::vector<Connection>& localConexiones, const std::unordered_map<int, double>& relevanciasExternas) {
-    for (auto& nodo : localNodos) {
-        nodo.relevanciaPrev = nodo.relevanciaActual;
-        nodo.relevanciaActual = 0.0;
-    }
-
-    for (const auto& conexion : localConexiones) {
-        for (auto& nodo : localNodos) {
-            if (nodo.id == conexion.destination) {
-                double relevanciaOrigen = 0.0;
-                if (conexion.origin % bsp_nprocs() == bsp_pid()) {
-                    relevanciaOrigen = localNodos[conexion.origin].relevanciaPrev;
-                } else {
-                    relevanciaOrigen = relevanciasExternas.at(conexion.origin);
-                }
-                nodo.relevanciaActual += relevanciaOrigen * conexion.weight;
-            }
-        }
-    }
-}
-
-
-
-std::unordered_map<int, double> recibirRelevancias() {
-    std::unordered_map<int, double> relevanciasExternas;
-    int numMensajes, totalTamaño;
-    bsp_qsize(&numMensajes, &totalTamaño);
-
-    for (int i = 0; i < numMensajes; ++i) {
-        Node nodo;
-        bsp_move(&nodo, sizeof(Node));
-        relevanciasExternas[nodo.id] = nodo.relevanciaPrev; 
-    }
-
-    return relevanciasExternas;
-}
-
-
-
 void bsp_main() {
 
     bsp_begin(bsp_nprocs());     
@@ -369,36 +257,14 @@ void bsp_main() {
         std::cout << "Convergencia alcanzada tras " << iteracion << " iteraciones." << std::endl;
     }
 
+    //  while (!convergencia) {
+    //      iteracion++;
+
+    //      std::vector<int> nodosRequeridos;
+
+    // }
+
     bsp_end();
 
     return;
-
-    // while (!convergencia) {
-    //     iteracion++;
-
-    //     actualizarRelevancias(localNodos, localConexiones, nodos);
-
-    //     convergencia = verificarConvergencia(localNodos, epsilon, num_procs);
-
-    //     if (pid == 0) {
-    //         std::cout << "Iteración " << iteracion << ":" << std::endl;
-    //         for (const auto& nodo : nodos) {
-    //             std::cout << "Nodo " << nodo.id << " | Relevancia Actual: "
-    //                       << nodo.relevanciaActual << std::endl;
-    //         }
-    //     }
-        
-    //     bsp_sync();
-    // }
-
-    // if (pid == 0) {
-    //     std::cout << "\nConvergencia alcanzada en " << iteracion << " iteraciones." << std::endl;
-    //     std::cout << "Resultados finales:" << std::endl;
-    //     for (const auto& nodo : nodos) {
-    //         std::cout << "Nodo " << nodo.id << " | Relevancia Final: " 
-    //                   << nodo.relevanciaActual << std::endl;
-    //     }
-    // }
-
-    // bsp_end();
 }

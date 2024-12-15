@@ -1,6 +1,7 @@
 #ifndef NODE_H
 #define NODE_H
 
+#pragma pack(1)
 class Node {
 public:
     int id;
@@ -14,5 +15,6 @@ public:
 
     void actualizarRelevancia(double nuevaRelevancia);
 };
+#pragma pack()
 
 #endif // NODE_H

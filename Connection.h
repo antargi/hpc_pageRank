@@ -1,6 +1,7 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
 
+#pragma pack(1)
 class Connection {
 public:
     int id;
@@ -14,5 +15,6 @@ public:
 
     void actualizarPeso(double nuevoPeso);
 };
+#pragma pack()
 
 #endif // CONNECTION_H

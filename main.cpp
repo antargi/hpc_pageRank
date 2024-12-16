@@ -103,7 +103,6 @@ void enviarConexiones(int num_procs,
 
     for (int dest = 0; dest < num_procs; ++dest) {
         for (const auto& conexion : conexiones) {
-            // Seleccionar conexiones según el ORIGEN
             if (conexion.destination % num_procs == dest) {
                 if (dest == pid) {
                     localConexiones.push_back(conexion);
@@ -261,7 +260,6 @@ void solicitarRelevancias(std::vector<Node>& localNodos, const std::vector<Conne
     }
 }
 
-// Función corregida de responderRelevancia
 void responderRelevancia(int pid, int num_procs, std::vector<Node>& localNodos) {
     int numMensajes, totalTamaño, destinoTag;
     int status;
@@ -274,13 +272,13 @@ void responderRelevancia(int pid, int num_procs, std::vector<Node>& localNodos) 
         int nodoOrigen;
         int nodoDestino;
 
-        // Recibir el tag que indica el nodo origen y destino
+        // Recibir el tag que indica el nodo destino
         bsp_get_tag(&status, &destinoTag);
         bsp_move(&nodoOrigen, sizeof(int));
       //std:: << "Proceso " << pid << " recibió solicitud de relevancia del nodo " << nodoOrigen << " al nodo " << destinoTag << std::endl;
         //std::cout << "Proceso " << pid << " recibió solicitud de relevancia del nodo " << nodoOrigen << " al nodo " << nodoDestino << std::endl;
 
-        // Buscar la relevancia del nodo origen (que es lo que se necesita para el destino)
+        // Buscar la relevancia del nodo origen
         for (auto& nodo : localNodos) {
             //std:: << "Proceso " << pid << " | Nodo " << nodo.id << " | Relevancia Actual: " << nodo.relevanciaActual << "se esta buscando el nodo "<< nodoOrigen<< std::endl;
             if (nodo.id == nodoOrigen) {
@@ -475,8 +473,9 @@ void bsp_main() {
 
         if (pid == 0) {
             globalConvergencia = true; 
-            for (int p = 1; p < num_procs; ++p) {
+            for (int p = 0; p < num_procs; ++p) {
                 bsp_get(p, &convergenciaLocal, p * sizeof(bool), &convergenciaLocal, sizeof(bool));
+                std::cout << "Proceso" << p << " | Convergencia recibida: " << convergenciaLocal << std::endl;
                 // std::cout << "Proceso 0 | Convergencia recibida de proceso " << p << ": " << convergenciaLocal << std::endl;
                 if (!convergenciaLocal) {
                     globalConvergencia = false;

@@ -25,6 +25,7 @@ constexpr double dampingFactor = 0.85;  // Factor de amortiguamiento
 
 void bsp_main();
 
+
 int main(int argc, char** argv) {
     void bsp_main();
     
@@ -263,7 +264,7 @@ void solicitarRelevancias(std::vector<Node>& localNodos, const std::vector<Conne
             if (itOrigen == localNodos.end()) { // Nodo origen no está local
                 int procesoDestino = origen % num_procs;
                 //std::cout << "el proceso" << pid << "solicta la relevancia del nodo" << origen << "al proceso" << procesoDestino << std::endl;
-                bsp_send(procesoDestino, &destination, &origen, sizeof(int));
+                bsp_send(procesoDestino, &destination, &conexion, sizeof(Connection));
             }
         }
     }
@@ -280,10 +281,12 @@ void responderRelevancia(int pid, int num_procs, std::vector<Node>& localNodos) 
         //std::cout << "Proceso " << pid << " recibió solicitud de relevancia." << std::endl;
         int nodoOrigen;
         int nodoDestino;
-
+        Connection conexion;
         // Recibir el tag que indica el nodo destino
         bsp_get_tag(&status, &destinoTag);
-        bsp_move(&nodoOrigen, sizeof(int));
+        bsp_move(&conexion, sizeof(Connection));
+        nodoOrigen = conexion.origin;
+        float weight = conexion.weight;
       //std:: << "Proceso " << pid << " recibió solicitud de relevancia del nodo " << nodoOrigen << " al nodo " << destinoTag << std::endl;
         //std::cout << "Proceso " << pid << " recibió solicitud de relevancia del nodo " << nodoOrigen << " al nodo " << nodoDestino << std::endl;
 
@@ -296,7 +299,7 @@ void responderRelevancia(int pid, int num_procs, std::vector<Node>& localNodos) 
                 // Enviar la relevancia al proceso solicitante
                 if (nodo.outCon > 0) {
                     //std::cout << "Se dividio la relevancia del nodo " << nodoOrigen << " entre " << nodo.outCon << std::endl;
-                    relevanciaOrigen = relevanciaOrigen / nodo.outCon;
+                    relevanciaOrigen = relevanciaOrigen * weight / nodo.outCon;
                 }
                 int procesoDestino = destinoTag % num_procs;
                 bsp_send(procesoDestino, &destinoTag, &relevanciaOrigen, sizeof(double));

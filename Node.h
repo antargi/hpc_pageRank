@@ -7,11 +7,15 @@ public:
     int id;
     double relevanciaActual;
     double relevanciaPrev;
+    int outCon;
+    int inCon;
 
-    Node() : id(0), relevanciaActual(0.0), relevanciaPrev(0.0) {}
+    // Constructor por defecto
+    Node() : id(0), relevanciaActual(0.0), relevanciaPrev(0.0), outCon(0), inCon(0) {}
 
-    Node(int id, double relevanciaActual = 0.0, double relevanciaPrev = 0.0)
-        : id(id), relevanciaActual(relevanciaActual), relevanciaPrev(relevanciaPrev) {}
+    // Constructor con parámetros
+    Node(int id, double relevanciaActual, double relevanciaPrev, int outCon, int inCon)
+    : id(id), relevanciaActual(relevanciaActual), relevanciaPrev(relevanciaPrev), outCon(outCon), inCon(inCon) {}
 
     void actualizarRelevancia(double nuevaRelevancia);
 };

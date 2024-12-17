@@ -20,6 +20,8 @@ char** g_argv;
 int totalNodos = 0;
 bool globalConvergencia = false;
 bool convergenciaLocal;
+constexpr double epsilon = 1e-2;  // Umbral para la convergencia
+constexpr double dampingFactor = 0.85;  // Factor de amortiguamiento
 
 void bsp_main();
 
@@ -36,14 +38,14 @@ int main(int argc, char** argv) {
 }
 
 void cargarDatos(const std::string& filename, double relevanciaInicial, 
-    
     std::vector<Node>& nodos, std::vector<Connection>& conexiones) {
     size_t start = filename.find('_') + 1;
     size_t end = filename.find('.');
     std::string numeroStr = filename.substr(start, end - start);
     int maxNodeId = std::stoi(numeroStr) - 1;
+    relevanciaInicial = 1.0 / (maxNodeId + 1);
     for (int i = 0; i <= maxNodeId; ++i) {
-        nodos.emplace_back(i, relevanciaInicial);
+        nodos.emplace_back(i, relevanciaInicial, 0, 0, 0);
     }
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -64,6 +66,20 @@ void cargarDatos(const std::string& filename, double relevanciaInicial,
         conexiones.emplace_back(connectionId++, origin, destination, weight);
     }
     file.close();
+
+    //For each node add the number of incoming and outgoing connections
+    for (auto& node : nodos) {
+
+        node.relevanciaPrev = (1-dampingFactor)/nodos.size();
+        for (const auto& connection : conexiones) {
+            if (connection.origin == node.id) {
+                node.outCon++;
+            }
+            if (connection.destination == node.id) {
+                node.inCon++;
+            }
+        }
+    }
 
     // std::cout << "Archivo cargado: " << filename << std::endl;
     // std::cout << "Nodos: " << nodos.size() << ", Conexiones: " << conexiones.size() << std::endl;
@@ -178,11 +194,10 @@ void calcularRelevancia(std::vector<Node>& localNodos,
     double newRelevancia;
     // Calcular contribuciones locales y recibir relevancias externas si es necesario
     for (auto& nodo : localNodos) {
-        conexionesEntrantesNodo = 0;
         newRelevancia = 0;
         if (relevanciasExternas.count(nodo.id) > 0) {
+            //std::cout << "Proceso " << pid << " | Nodo " << nodo.id << " | Relevancia Externa: " << relevanciasExternas[nodo.id] << std::endl;
             newRelevancia += dampingFactor * relevanciasExternas[nodo.id];
-            conexionesEntrantesNodo++;
         }
 
         int destination = nodo.id;
@@ -192,7 +207,6 @@ void calcularRelevancia(std::vector<Node>& localNodos,
         for (const auto& conexion : localConexiones) {
             if (conexion.destination == destination) {
                 conexionesEntrantes.push_back(conexion);
-                conexionesEntrantesNodo++;
             }
         }
 
@@ -204,21 +218,16 @@ void calcularRelevancia(std::vector<Node>& localNodos,
 
             if (itOrigen != localNodos.end()) {
                 double relevanciaOrigen = itOrigen->relevanciaPrev;
-                double contribucion = relevanciaOrigen * conexion.weight;
-                double contribucionPonderada = dampingFactor * contribucion;
-
-                newRelevancia += contribucionPonderada;
+                double contribucion = relevanciaOrigen * conexion.weight * dampingFactor/itOrigen->outCon;
+                // Imprimir las contribuciones antes de actualizar la relevancia
+                // Imprimir las contribuciones locales
+                if (nodo.id == 2){
+                    //std::cout << "Nodo " << nodo.id << " | Contribución Local desde Nodo " << origen 
+                      //      << ": " << relevanciaOrigen << " | Contribución Ponderada: " << contribucion << std::endl;
+                }
+                newRelevancia += contribucion;
             }
         }
-
-        // Dividir la relevancia actual entre el grado de entrada del nodo
-        if (conexionesEntrantesNodo > 0) {
-          //std:: << "Valor de newRelevancia: " << newRelevancia << std::endl;
-          //std:: << "Cantidad de conexiones entrantes del nodo " << nodo.id << ": " << conexionesEntrantesNodo << std::endl;
-            newRelevancia /= conexionesEntrantesNodo;
-          //std:: << "Valor de newRelevancia después de dividir: " << newRelevancia << std::endl;
-        }
-
         nodo.relevanciaActual += newRelevancia;
         
     }
@@ -280,13 +289,20 @@ void responderRelevancia(int pid, int num_procs, std::vector<Node>& localNodos) 
 
         // Buscar la relevancia del nodo origen
         for (auto& nodo : localNodos) {
-            //std:: << "Proceso " << pid << " | Nodo " << nodo.id << " | Relevancia Actual: " << nodo.relevanciaActual << "se esta buscando el nodo "<< nodoOrigen<< std::endl;
+            //std::cout << "Proceso " << pid << " | Nodo " << nodo.id << " | Relevancia Actual: " << nodo.relevanciaActual << "se esta buscando el nodo "<< nodoOrigen<< std::endl;
             if (nodo.id == nodoOrigen) {
                 double relevanciaOrigen = nodo.relevanciaPrev; // Relevancia previa del nodo origen
+                //std::cout << "Proceso " << pid << " | Nodo " << nodoOrigen << " | Relevancia Actual: " << nodo.relevanciaActual << " | Relevancia Prev: " << nodo.relevanciaPrev << std::endl;
                 // Enviar la relevancia al proceso solicitante
+                if (nodo.outCon > 0) {
+                    //std::cout << "Se dividio la relevancia del nodo " << nodoOrigen << " entre " << nodo.outCon << std::endl;
+                    relevanciaOrigen = relevanciaOrigen / nodo.outCon;
+                }
                 int procesoDestino = destinoTag % num_procs;
                 bsp_send(procesoDestino, &destinoTag, &relevanciaOrigen, sizeof(double));
-                //std:: << "Se respondió la solicitud de relevancia del nodo " << nodoOrigen << " al nodo " << destinoTag << " con relevancia " << relevanciaOrigen << std::endl;
+                if (destinoTag == 2){
+                    //std::cout << "Se respondió la solicitud de relevancia del nodo " << nodoOrigen << " al nodo " << destinoTag << " con relevancia " << relevanciaOrigen << " En el procesador " << pid <<std::endl;
+                }
         }
         }
         }
@@ -312,6 +328,8 @@ std::unordered_map<int, double> recibirRelevanciasDirectas() {
         // Mover la relevancia recibida a la variable relevanciaRecibida
         bsp_move(&relevanciaRecibida, sizeof(double));
 
+        //std::cout << "Proceso " << bsp_pid() << " | Nodo destino: " << tagDestino 
+          //        << " | Relevancia recibida: " << relevanciaRecibida << std::endl;
         // Acumulamos la relevancia recibida en el nodo destino correspondiente
         relevanciasExternas[tagDestino] += relevanciaRecibida;
 
@@ -336,10 +354,9 @@ void bsp_main() {
     int tagSize = sizeof(int);
     bsp_set_tagsize(&tagSize);
 
-    std::cout << "El valor del pid es: " << pid << std::endl;
+    //std::cout << "El valor del pid es: " << pid << std::endl;
 
     std::string filename = g_argc > 1 ? g_argv[1] : "conexiones.txt";
-    double relevanciaInicial = (g_argc == 3) ? std::stod(g_argv[2]) : 1.0;
 
     std::vector<Node> nodos;
     std::vector<Connection> conexiones;
@@ -349,6 +366,8 @@ void bsp_main() {
 
     bsp_push_reg(&totalNodos, sizeof(int));
     bsp_sync();
+
+    double relevanciaInicial = (g_argc == 3) ? std::stod(g_argv[2]) : 1.0;
 
     bsp_push_reg(&globalConvergencia, sizeof(bool));
     bsp_sync();
@@ -393,11 +412,26 @@ void bsp_main() {
 
     bsp_sync();      
 
+    //For each proccess print nodes and values
 
-    constexpr double epsilon = 1e-6;  // Umbral para la convergencia
-    constexpr double dampingFactor = 0.85;  // Factor de amortiguamiento
+    for (int i = 0; i < num_procs; ++i) {
+        if (pid == i) {
+            std::cout << "Proceso " << pid << " | Nodos locales: " << localNodos.size() << std::endl;
+            for (const auto& nodo : localNodos) {
+                std::cout << "Proceso " << pid << " | Nodo: " << nodo.id << " | Relevancia Actual: " << nodo.relevanciaActual << " | Relevancia Prev: " << nodo.relevanciaPrev << " | outCon" << nodo.outCon << " | inCon" << nodo.inCon << std::endl;
+            }
+            std::cout << "Proceso " << pid << " | Conexiones locales: " << localConexiones.size() << std::endl;
+            for (const auto& conexion : localConexiones) {
+                std::cout << "Proceso " << pid << " | Conexión: " << conexion.id << " | Origen: " << conexion.origin << " | Destino: " << conexion.destination << " | Peso: " << conexion.weight << std::endl;
+            }
+        }
+        bsp_sync();
+    }
+
+
+    
     int iteracion = 0;
-    constexpr int maxIteraciones = 4;
+    constexpr int maxIteraciones = 10;
     std::unordered_map<int, double> relevanciasExternas; 
 
     bsp_push_reg(&convergenciaLocal, sizeof(bool));
@@ -407,7 +441,8 @@ void bsp_main() {
 
         iteracion++;
 
-        std::cout << "Iteración | " << iteracion << std::endl;
+        
+        //std::cout << "Iteración | " << iteracion << std::endl;
 
 
         //std::cout << "Proceso " << pid << " | Antes de calcular relevancias:" << std::endl;
@@ -462,6 +497,7 @@ void bsp_main() {
                 break; 
             }
         }
+        
 
 
         // std::cout << "Proceso: " << pid << " Convergencia local: " << convergenciaLocal <<  std::endl;
@@ -475,7 +511,7 @@ void bsp_main() {
             globalConvergencia = true; 
             for (int p = 0; p < num_procs; ++p) {
                 bsp_get(p, &convergenciaLocal, p * sizeof(bool), &convergenciaLocal, sizeof(bool));
-                std::cout << "Proceso" << p << " | Convergencia recibida: " << convergenciaLocal << std::endl;
+                //std::cout << "Proceso" << p << " | Convergencia recibida: " << convergenciaLocal << std::endl;
                 // std::cout << "Proceso 0 | Convergencia recibida de proceso " << p << ": " << convergenciaLocal << std::endl;
                 if (!convergenciaLocal) {
                     globalConvergencia = false;
